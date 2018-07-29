@@ -1,0 +1,89 @@
+module fir_gen #(
+	 parameter W_IN 			 = 11, // Input bit width
+    parameter W_MU          = 22, // 2x for Multiplier width
+    parameter W_ADD         = 23, // Adder width
+    parameter W_O           = 13, // Output bit width 
+    parameter L             = 4,  // Filter Length
+	 parameter Mpipe         = 3   // pipeline stages of multiplier
+)	(
+	 
+	 input 						 clk, 
+	 input 						 load_val, 
+	 input signed [W_IN-1:0] val_in, 
+	 input signed [W_IN-1:0] coeff_in, 
+	 
+	 output signed [W_O-1:0] fir_out
+); 
+
+
+reg signed  [W_IN-1:0]  val;
+wire signed [W_ADD-1:0] sumOfProd;
+
+// 1D array types i.e. memories supported by Quartus
+reg signed  [W_IN-1:0]  coeff   [0:3];  // Coefficient array
+wire signed [W_MU-1:0]  product [0:3];  // Product array
+reg signed  [W_ADD-1:0] adder   [0:3];  // Adder array
+	
+wire signed [W_MU-1:0] sum; 
+wire clken;
+wire aclr;
+
+
+
+assign sum   =0; 
+assign aclr  =0; // Default for mult
+assign clken =0;
+
+// Load Data or Coefficient
+always @(posedge clk)
+	begin: Load
+		if (!load_val) begin
+			coeff[3] <= coeff_in; // Store coefficient in register
+			coeff[2] <= coeff[3]; // Coefficients shift one
+			coeff[1] <= coeff[2];
+			coeff[0] <= coeff[1];
+		end
+		else begin
+			val <= val_in; // Get one data sample at a time
+		end
+	end
+	
+	
+// Compute sum-of-products
+always @(posedge clk)
+	begin: SOP
+	// Compute the transposed filter additions
+		adder[0] <= product[0] + adder[1];
+		adder[1] <= product[1] + adder[2];
+		adder[2] <= product[2] + adder[3];
+		adder[3] <= product[3]; // First TAP has only a register
+	end
+
+assign sumOfProd = adder[0];
+
+genvar I; //Define loop variable for generate statement
+generate
+for (I=0; I<L; I=I+1) 
+	begin: MulGen
+	// Instantiate L pipelined multiplier x*c[I] = p[I]
+		lpm_mult mul_I (
+			.clock(clk), 
+			.dataa(val), 
+			.datab(coeff[I]), 
+			.result(product[I])
+		// .sum(sum), 
+		//	.clken(clken), 
+		//	.aclr(aclr)
+			);
+			defparam mul_I.lpm_widtha = W_IN;
+			defparam mul_I.lpm_widthb = W_IN;
+			defparam mul_I.lpm_widthp = W_MU;
+			defparam mul_I.lpm_widths = W_MU;
+			defparam mul_I.lpm_pipeline = Mpipe;
+			defparam mul_I.lpm_representation = "SIGNED";
+	end
+endgenerate
+
+assign fir_out = sumOfProd[W_ADD-1:W_ADD-W_O];
+
+endmodule	
