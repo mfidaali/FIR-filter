@@ -1,5 +1,5 @@
-# FIR-filter
-Neural signal DSP project:
+# FIR-filter RTL files
+Neural signal DSP project- only RTL files
 
 Project takes in small input voltage signals, runs it through an ADC, then a Finite Impulse Response Filter. Finally, the logic compares the output to a threshold voltage.
 
